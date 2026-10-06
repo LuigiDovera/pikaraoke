@@ -8,7 +8,7 @@ from flask import Response, jsonify
 from flask_smorest import Blueprint
 from marshmallow import Schema, ValidationError, fields, validate, validates_schema
 
-from pikaraoke.lib.auth import public
+from pikaraoke.lib.auth import user
 from pikaraoke.lib.current_app import get_karaoke_instance
 from pikaraoke.lib.play_history_manager import RESET_SCOPES, SESSION_NAME_MAX_LENGTH
 
@@ -159,8 +159,8 @@ def get_singers(query):
 # The one thing here the whole room may read: a guest looks up what they sang
 # last time and queues it again.
 @sessions_api_bp.route("/api/history/plays")
-@public
 @sessions_api_bp.arguments(PlaysQuery, location="query")
+@user
 def get_plays(query):
     """Paginated play log, newest first, optionally scoped to one session."""
     k = get_karaoke_instance()

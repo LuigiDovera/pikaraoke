@@ -3,19 +3,22 @@
 import re
 
 import pytest
-from flask import Flask
+from flask import Flask, session
 from flask_babel import Babel
 
-from pikaraoke.lib.auth import install_auth_gate, public
+from pikaraoke.lib.auth import install_auth_gate, public, user
 from tests.conftest import StubAdminAuth
 
-# Every endpoint the room may reach. Opening a route to guests means editing
-# this list, which is a line in a diff someone has to agree with.
+# Every endpoint guests may reach without signing in.
 EXPECTED_PUBLIC_ENDPOINTS = {
     "admin.auth",
+    "admin.login_page",
     "admin.logout",
     "auth_api.auth_status",
     "auth_api.login",
+}
+
+EXPECTED_USER_ENDPOINTS = {
     "bg_music.bg_music",
     "bg_music.bg_playlist",
     "files.browse",
@@ -43,32 +46,44 @@ EXPECTED_PUBLIC_ENDPOINTS = {
     "stream.stream_init",
     "stream.stream_main",
     "stream.stream_playlist",
-    "stream.stream_progressive_mp4",
     "stream.stream_segment",
     "stream.stream_segment_m4s",
-    "stream.stream_subtitle",
 }
 
 
-def test_every_endpoint_is_decided(real_app):
-    """Every route is public by explicit mark, or host-only. No third state."""
-    marked = {
+def test_every_endpoint_has_an_explicit_role(real_app):
+    """Every route is public, ordinary-user, or admin-only."""
+    public_endpoints = {
         rule.endpoint
         for rule in real_app.url_map.iter_rules()
         if getattr(real_app.view_functions[rule.endpoint], "pika_public", False)
     }
-    assert marked == EXPECTED_PUBLIC_ENDPOINTS
+    user_endpoints = {
+        rule.endpoint
+        for rule in real_app.url_map.iter_rules()
+        if getattr(real_app.view_functions[rule.endpoint], "pika_user", False)
+    }
+    assert public_endpoints == EXPECTED_PUBLIC_ENDPOINTS
+    assert user_endpoints == EXPECTED_USER_ENDPOINTS
 
 
 def _gated_app(admin: bool):
     app = Flask(__name__)
     app.secret_key = "test"
-    app.config["ADMIN_AUTH"] = StubAdminAuth(admin)
+    app.config["ADMIN_AUTH"] = StubAdminAuth(admin, user_password=True)
     Babel(app)
     app.add_url_rule("/", "home.home", public(lambda: "home"))
+    app.add_url_rule("/login", "admin.login_page", public(lambda: "login"))
     app.add_url_rule("/open", "open", public(lambda: "open"))
+    app.add_url_rule("/ordinary", "ordinary", user(lambda: "ordinary"))
     app.add_url_rule("/closed", "closed", lambda: "closed")
     app.add_url_rule("/api/closed", "api_closed", lambda: "closed")
+
+    @app.before_request
+    def establish_test_admin_session():
+        if admin:
+            session["admin"] = app.config["ADMIN_AUTH"].session_token
+
     install_auth_gate(app)
     return app
 
@@ -83,8 +98,24 @@ class TestRefusal:
     def test_an_unmarked_route_refuses_a_guest(self, guest):
         assert guest.get("/closed").status_code == 302
 
+    def test_page_refusal_redirects_to_the_login_page(self, guest):
+        response = guest.get("/closed")
+        assert response.headers["Location"].endswith("/login")
+
+    def test_login_page_is_available_to_a_guest(self, guest):
+        assert guest.get("/login").status_code == 200
+
     def test_a_marked_route_answers_a_guest(self, guest):
         assert guest.get("/open").status_code == 200
+
+    def test_a_general_user_route_requires_a_user_session(self, guest):
+        assert guest.get("/ordinary").status_code == 302
+
+    def test_a_general_user_session_reaches_a_user_route(self, guest):
+        with guest.session_transaction() as session:
+            session["user"] = "stub-user-session"
+
+        assert guest.get("/ordinary").status_code == 200
 
     def test_the_admin_reaches_everything(self):
         client = _gated_app(admin=True).test_client()
@@ -124,17 +155,17 @@ class TestSpec:
         return real_app.test_client().get("/openapi.json").get_json()
 
     def test_it_names_the_credential(self, spec):
-        scheme = spec["components"]["securitySchemes"]["adminSession"]
+        scheme = spec["components"]["securitySchemes"]["pikaSession"]
         assert (scheme["type"], scheme["in"], scheme["name"]) == ("apiKey", "cookie", "session")
 
     def test_it_asks_for_the_credential_by_default(self, spec):
-        assert spec["security"] == [{"adminSession": []}]
+        assert spec["security"] == [{"pikaSession": []}]
 
     def test_a_public_operation_clears_the_default(self, spec):
-        assert spec["paths"]["/api/get_queue"]["get"]["security"] == []
+        assert spec["paths"]["/api/auth"]["get"]["security"] == []
 
-    def test_a_host_only_operation_inherits_it(self, spec):
-        assert "security" not in spec["paths"]["/api/skip"]["post"]
+    def test_a_regular_api_operation_inherits_it(self, spec):
+        assert "security" not in spec["paths"]["/api/get_queue"]["get"]
 
     def test_every_documented_operation_matches_its_marker(self, spec, real_app):
         for rule in real_app.url_map.iter_rules():

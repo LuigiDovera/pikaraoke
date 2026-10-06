@@ -74,7 +74,7 @@ def _browse(
     k = k if k is not None else _karaoke(app, songs, per_page, folders)
     if cookie is not None:
         client.set_cookie("browse_per_page", cookie)
-    app.config["ADMIN_AUTH"] = StubAdminAuth(admin)
+    app.config["ADMIN_AUTH"] = StubAdminAuth(admin, user_password=not admin)
     with (
         patch("pikaraoke.routes.files.get_karaoke_instance", return_value=k),
         patch("pikaraoke.routes.files.get_site_name", return_value="PiKaraoke"),
@@ -192,9 +192,9 @@ class TestPerPageControl:
     SONGS = [f"/songs/Song {i:02d}.mp4" for i in range(10)]
 
     def test_the_dropdown_is_offered_to_a_guest(self, client, app):
-        """It was admin-only while the size was a server-wide preference."""
-        body = _browse(client, app, self.SONGS, per_page=25, admin=False).data.decode()
-        assert 'id="pager-per-page"' in body
+        response = _browse(client, app, self.SONGS, per_page=25, admin=False)
+        assert response.status_code == 302
+        assert response.headers["Location"].endswith("/login")
 
     def test_the_size_in_force_is_always_selectable(self, client, app):
         """A value Settings allows but the list does not would otherwise be unshowable."""
@@ -226,11 +226,13 @@ class TestPerPageCookie:
         _browse(client, app, cookie="20", k=k)
         k.preferences.set.assert_not_called()
 
-    def test_the_size_outlives_admin(self, client, app):
-        """Logging out is not a reason to lose a display choice."""
-        body = _browse(
-            client, app, self.SONGS, per_page=100, cookie="20", admin=False
-        ).data.decode()
+    def test_the_size_persists_after_logout_and_login(self, client, app):
+        """The per-device choice is still there after the account signs back in."""
+        _browse(client, app, self.SONGS, per_page=100, cookie="20")
+        logged_out = _browse(client, app, self.SONGS, per_page=100, admin=False)
+        assert logged_out.status_code == 302
+
+        body = _browse(client, app, self.SONGS, per_page=100).data.decode()
         assert "1-20 of 30" in body
 
     def test_junk_falls_back_to_the_default(self, client, app):
@@ -376,7 +378,7 @@ class TestRenamePermission:
         k = MagicMock()
         response = _post_rename(client, k, admin=False, referrer="/queue")
         assert response.status_code == 302
-        assert response.headers["Location"] == "/"
+        assert response.headers["Location"] == "/login"
         k.song_manager.rename.assert_not_called()  # pylint: disable=no-member
 
 

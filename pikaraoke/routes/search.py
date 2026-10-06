@@ -6,7 +6,7 @@ import flask_babel
 from flask import render_template, request
 from flask_smorest import Blueprint
 
-from pikaraoke.lib.auth import public
+from pikaraoke.lib.auth import user
 from pikaraoke.lib.current_app import get_karaoke_instance, get_site_name
 from pikaraoke.lib.youtube_dl import get_search_results
 
@@ -16,7 +16,7 @@ search_bp = Blueprint("search", __name__)
 
 
 @search_bp.route("/search", methods=["GET"])
-@public
+@user
 def search():
     """YouTube search page."""
     k = get_karaoke_instance()

@@ -100,6 +100,21 @@ class TestParsePikaraokeArgs:
         args = parse_pikaraoke_args()
         assert args.admin_password is None
 
+    def test_user_password_defaults_to_unset(self, monkeypatch):
+        monkeypatch.setattr("sys.argv", ["pikaraoke"])
+        args = parse_pikaraoke_args()
+        assert args.user_password is None
+
+    def test_user_password_sets_it(self, monkeypatch):
+        monkeypatch.setattr("sys.argv", ["pikaraoke", "--user-password", "sing"])
+        args = parse_pikaraoke_args()
+        assert args.user_password == "sing"
+
+    def test_user_password_with_no_value_clears_it(self, monkeypatch):
+        monkeypatch.setattr("sys.argv", ["pikaraoke", "--user-password"])
+        args = parse_pikaraoke_args()
+        assert args.user_password == ""
+
     def test_admin_password_with_no_value_clears_it(self, monkeypatch):
         """A bare flag, because not every shell can pass an empty string."""
         monkeypatch.setattr("sys.argv", ["pikaraoke", "--admin-password"])

@@ -5,7 +5,7 @@ from flask import render_template
 from flask_smorest import Blueprint
 from marshmallow import Schema, fields, validate
 
-from pikaraoke.lib.auth import public
+from pikaraoke.lib.auth import user
 from pikaraoke.lib.current_app import get_karaoke_instance, get_site_name, is_admin
 from pikaraoke.lib.play_history_manager import SESSION_NAME_MAX_LENGTH
 
@@ -70,8 +70,8 @@ def sessions():
 
 
 @sessions_bp.route("/history")
-@public
 @sessions_bp.arguments(HistoryQuery, location="query")
+@user
 def history(query):
     """The play log, showing every session or one, for anyone in the room."""
     return render_template(
@@ -91,8 +91,8 @@ def history(query):
 
 
 @sessions_bp.route("/rankings")
-@public
 @sessions_bp.arguments(RankingsQuery, location="query")
+@user
 def rankings(query):
     """Most-played songs and most active performers, all time or by session."""
     k = get_karaoke_instance()

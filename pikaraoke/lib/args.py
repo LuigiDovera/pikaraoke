@@ -139,8 +139,16 @@ def parse_pikaraoke_args() -> argparse.Namespace:
         required=False,
     )
     server.add_argument(
+        "--user-password",
+        help="Password required for ordinary player access. Unset, ordinary access is open to everyone. Saved when passed; pass with no value to clear it.",
+        nargs="?",
+        const="",
+        default=None,
+        required=False,
+    )
+    server.add_argument(
         "--admin-password",
-        help="Administrator password for the web UI: player controls, song editing, shutdown. Saved when passed, so it also resets a forgotten one; pass it with no value to clear it. Unset, everyone is an admin.",
+        help="Administrator password for settings and host controls. Saved when passed, so it also resets a forgotten one; pass with no value to clear it. Admin access is disabled when unset.",
         nargs="?",
         const="",
         default=None,

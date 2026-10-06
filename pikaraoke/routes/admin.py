@@ -9,13 +9,18 @@ import threading
 import time
 
 import flask_babel
-from flask import Response, flash, redirect, session, url_for
+from flask import Response, flash, redirect, render_template, session, url_for
 from flask_smorest import Blueprint
 from marshmallow import Schema, fields
 
 from pikaraoke.karaoke import Karaoke
 from pikaraoke.lib.auth import grant_admin_session, log_in, public
-from pikaraoke.lib.current_app import get_admin_auth, get_karaoke_instance
+from pikaraoke.lib.current_app import (
+    get_admin_auth,
+    get_karaoke_instance,
+    get_site_name,
+    is_admin,
+)
 from pikaraoke.lib.youtube_dl import get_youtubedl_version, upgrade_youtubedl
 
 _ = flask_babel.gettext
@@ -29,8 +34,15 @@ class AdminPasswordForm(Schema):
     )
 
 
+class UserPasswordForm(Schema):
+    user_password = fields.String(
+        load_default="", metadata={"description": "New user password; empty clears it"}
+    )
+
+
 class AuthForm(Schema):
-    admin_password = fields.String(load_default="", metadata={"description": "Admin password"})
+    password = fields.String(load_default=None, metadata={"description": "User or admin password"})
+    admin_password = fields.String(load_default=None, metadata={"description": "Deprecated alias"})
 
 
 # A desktop session's polkit agent would otherwise put a password dialog on the TV and
@@ -171,15 +183,36 @@ def expand_fs():
 @public
 @admin_bp.arguments(AuthForm, location="form")
 def auth(form):
-    """Authenticate as admin from the browser form."""
-    if log_in(form["admin_password"]):
+    """Authenticate as a user or admin from the browser form."""
+    password = form["password"]
+    if password is None:
+        password = form["admin_password"] or ""
+    role = log_in(password)
+    if role == "admin":
         # MSG: Message shown after logging in as admin successfully
         flash(_("Admin mode granted!"), "is-success")
-    else:
-        # MSG: Message shown after failing to login as admin
-        flash(_("Incorrect admin password!"), "is-danger")
-    # The login form only renders on the info page, so that is where login ends.
-    return redirect(url_for("info.info"))
+        return redirect(url_for("home.home"))
+    if role == "user":
+        # MSG: Message shown after logging in as a user successfully.
+        flash(_("Logged in successfully!"), "is-success")
+        return redirect(url_for("home.home"))
+    # MSG: Message shown after a failed login.
+    flash(_("Incorrect password!"), "is-danger")
+    return redirect(url_for("admin.login_page"))
+
+
+@admin_bp.route("/login")
+@public
+def login_page():
+    """Show the sign-in page to unauthenticated visitors."""
+    if is_admin():
+        return redirect(url_for("home.home"))
+    return render_template(
+        "login.html",
+        site_title=get_site_name(),
+        # MSG: Title of the page used to sign in.
+        title=_("Login"),
+    )
 
 
 @admin_bp.route("/admin_password", methods=["POST"])
@@ -196,8 +229,34 @@ def set_admin_password(form):
         # MSG: Message shown after setting a new admin password.
         flash(_("Admin password set. Other devices will need to log in again."), "is-success")
     else:
-        # MSG: Message shown after clearing the admin password, making everyone an admin.
-        flash(_("Admin password cleared. Everyone is an admin again."), "is-warning")
+        # MSG: Message shown after clearing the admin password.
+        flash(
+            _(
+                "Admin password cleared. Admin access now requires setting a new password "
+                "from the command line."
+            ),
+            "is-warning",
+        )
+    return redirect(url_for("info.info"))
+
+
+@admin_bp.route("/user_password", methods=["POST"])
+@admin_bp.arguments(UserPasswordForm, location="form")
+def set_user_password(form):
+    """Set, change or clear the ordinary-user password."""
+    password = form["user_password"]
+    auth = get_admin_auth()
+    auth.set_user_password(password)
+    if password:
+        grant_admin_session()
+        # MSG: Message shown after setting the user password.
+        flash(_("User password set. Other users will need to log in again."), "is-success")
+    else:
+        # MSG: Message shown after clearing the user password.
+        flash(
+            _("User password cleared. Ordinary karaoke features are open to everyone."),
+            "is-warning",
+        )
     return redirect(url_for("info.info"))
 
 
@@ -206,8 +265,9 @@ def set_admin_password(form):
 # session and grants nothing, so gating it would refuse a no-op.
 @public
 def logout():
-    """Log out of admin mode."""
+    """Log out of this browser session."""
     session.pop("admin", None)
-    # MSG: Message shown after logging out as admin successfully
-    flash(_("Logged out of admin mode!"), "is-success")
-    return redirect(url_for("info.info"))
+    session.pop("user", None)
+    # MSG: Message shown after logging out successfully.
+    flash(_("Logged out!"), "is-success")
+    return redirect(url_for("admin.login_page"))

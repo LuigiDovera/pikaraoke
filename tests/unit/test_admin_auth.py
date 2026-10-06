@@ -74,6 +74,31 @@ class TestPassword:
 
         assert not auth.is_password_set()
 
+    def test_admin_and_user_passwords_are_independent(self, auth):
+        auth.set_password("admin")
+        auth.set_user_password("user")
+
+        assert auth.verify("admin")
+        assert not auth.verify_user("admin")
+        assert auth.verify_user("user")
+        assert not auth.verify("user")
+
+    def test_changing_the_user_password_changes_its_session_token(self, auth):
+        auth.set_user_password("user")
+        before = auth.user_session_token
+        auth.set_user_password("new-user")
+
+        assert auth.user_session_token != before
+
+    def test_the_user_password_survives_a_restart(self, auth, config_path):
+        auth.set_user_password("user")
+
+        restarted = AdminAuth(PreferenceManager(config_path))
+
+        assert restarted.is_user_password_set()
+        assert restarted.verify_user("user")
+        assert restarted.user_session_token == auth.user_session_token
+
 
 class TestSessionToken:
     def test_it_changes_when_the_password_changes(self, auth):

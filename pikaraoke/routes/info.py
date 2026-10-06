@@ -8,12 +8,13 @@ from flask_smorest import Blueprint
 from pikaraoke import VERSION
 from pikaraoke.constants import ITUNES_COUNTRIES, LANGUAGES, per_page_options
 from pikaraoke.lib import keep_awake
-from pikaraoke.lib.auth import public
+from pikaraoke.lib.auth import user
 from pikaraoke.lib.current_app import (
     get_admin_auth,
     get_karaoke_instance,
     get_site_name,
     is_admin,
+    is_user,
 )
 from pikaraoke.lib.get_platform import (
     get_installed_js_runtime,
@@ -29,7 +30,7 @@ info_bp = Blueprint("info", __name__)
 
 
 @info_bp.route("/info")
-@public
+@user
 def info():
     """System information and settings page."""
     k = get_karaoke_instance()
@@ -50,7 +51,9 @@ def info():
         title=_("Settings"),
         url=url,
         admin=is_admin(),
+        user_access=is_user(),
         admin_password_set=get_admin_auth().is_password_set(),
+        user_password_set=get_admin_auth().is_user_password_set(),
         platform=k.platform,
         os_version=k.os_version,
         ffmpeg_version=k.ffmpeg_version,

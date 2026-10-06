@@ -13,7 +13,7 @@ from marshmallow import Schema, fields
 
 from pikaraoke.constants import ITUNES_COUNTRIES, per_page_options
 from pikaraoke.karaoke import SongInUseError
-from pikaraoke.lib.auth import public
+from pikaraoke.lib.auth import user
 from pikaraoke.lib.current_app import get_karaoke_instance, get_site_name, is_admin
 from pikaraoke.lib.metadata_parser import youtube_id_suffix
 from pikaraoke.lib.song_manager import rename_collides
@@ -82,7 +82,7 @@ class EditFileForm(Schema):
 
 
 @files_bp.route("/browse", methods=["GET"])
-@public
+@user
 def browse():
     """Browse available songs page."""
     k = get_karaoke_instance()

@@ -300,12 +300,11 @@ def main() -> None:
     # Passing the flag persists it; omitting it keeps the stored one, empty clears it.
     if args.admin_password is not None:
         admin_auth.set_password(args.admin_password)
+    if args.user_password is not None:
+        admin_auth.set_user_password(args.user_password)
 
     if not admin_auth.is_password_set():
-        logging.info(
-            "No admin password set: everyone on the network can control playback and "
-            "shut down the system. Set one on the info page."
-        )
+        logging.info("No admin password set: admin-only settings and host controls are disabled.")
 
     # expose shared configuration variables to the flask app
     app.config["SITE_NAME"] = "PiKaraoke"

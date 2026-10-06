@@ -3,6 +3,7 @@
 import datetime
 import logging
 import subprocess
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -10,7 +11,7 @@ from flask import Flask
 from flask_babel import Babel
 
 from pikaraoke.lib.admin_auth import AdminAuth
-from pikaraoke.lib.auth import install_auth_gate, public
+from pikaraoke.lib.auth import install_auth_gate, public, user
 from pikaraoke.lib.preference_manager import PreferenceManager
 from pikaraoke.routes.admin import admin_bp, delayed_halt
 from pikaraoke.routes.auth_api import auth_api_bp
@@ -28,9 +29,12 @@ def auth(tmp_path):
 
 @pytest.fixture
 def app(auth):
-    test_app = Flask(__name__)
+    test_app = Flask(
+        __name__, template_folder=str(Path(__file__).parents[2] / "pikaraoke" / "templates")
+    )
     test_app.secret_key = auth.secret_key
     test_app.config["ADMIN_AUTH"] = auth
+    test_app.config["SITE_NAME"] = "PiKaraoke"
     test_app.config["SESSION_COOKIE_HTTPONLY"] = True
     test_app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
     test_app.permanent_session_lifetime = datetime.timedelta(days=90)
@@ -40,6 +44,7 @@ def app(auth):
     test_app.register_blueprint(library_bp)
     test_app.add_url_rule("/info", "info.info", public(lambda: ""))
     test_app.add_url_rule("/", "home.home", public(lambda: ""))
+    test_app.add_url_rule("/api/user-gated", "user_gated", user(lambda: ""))
     # Host-only and free of the Karaoke instance, so a test can watch the gate
     # open rather than a view succeed.
     test_app.add_url_rule("/api/gated", "gated", lambda: "")
@@ -74,11 +79,23 @@ class TestAdminCookieAttributes:
 
 
 class TestLogin:
+    def test_login_page_is_available_without_a_session(self, client):
+        response = client.get("/login")
+
+        assert response.status_code == 200
+        assert b'name="password"' in response.data
+
     def test_correct_password_establishes_the_session(self, client, auth):
         _login(client)
 
         with client.session_transaction() as session:
             assert session["admin"] == auth.session_token
+
+    def test_successful_login_returns_to_the_app(self, client):
+        response = _login(client)
+
+        assert response.status_code == 302
+        assert response.headers["Location"].endswith("/")
 
     def test_incorrect_password_does_not(self, client):
         _login(client, "wrong")
@@ -92,6 +109,26 @@ class TestLogin:
 
         with client.session_transaction() as session:
             assert "admin" not in session
+            assert "user" not in session
+
+    def test_user_password_signs_in_without_admin_privileges(self, client, auth):
+        auth.set_user_password("sing")
+        response = client.post("/auth", data={"password": "sing"})
+
+        assert response.status_code == 302
+        with client.session_transaction() as session:
+            assert session["user"] == auth.user_session_token
+            assert "admin" not in session
+        assert client.get("/api/user-gated").status_code == 200
+        assert client.get("/api/gated").status_code == 403
+
+    def test_admin_password_signs_in_as_admin(self, client, auth):
+        response = client.post("/auth", data={"password": PASSWORD})
+
+        assert response.status_code == 302
+        with client.session_transaction() as session:
+            assert session["admin"] == auth.session_token
+            assert "user" not in session
 
 
 class TestSetAdminPassword:
@@ -126,6 +163,31 @@ class TestSetAdminPassword:
         assert auth.verify(PASSWORD)
 
 
+class TestSetUserPassword:
+    def test_admin_can_set_it_and_stays_logged_in(self, client, auth):
+        _login(client)
+
+        client.post("/user_password", data={"user_password": "sing"})
+
+        assert auth.verify_user("sing")
+        assert client.get("/api/gated").status_code == 200
+
+    def test_setting_it_invalidates_other_user_sessions(self, client, app, auth):
+        auth.set_user_password("sing")
+        other = app.test_client()
+        other.post("/auth", data={"password": "sing"})
+
+        _login(client)
+        client.post("/user_password", data={"user_password": "new-sing"})
+
+        assert other.get("/api/user-gated").status_code == 403
+
+    def test_non_admin_cannot_set_it(self, client, auth):
+        client.post("/user_password", data={"user_password": "sing"})
+
+        assert not auth.is_user_password_set()
+
+
 class TestApiLogin:
     """The JSON door, for a client that cannot read a flash message."""
 
@@ -133,8 +195,20 @@ class TestApiLogin:
         response = client.post("/api/auth", json={"admin_password": PASSWORD})
 
         assert response.status_code == 200
+        assert response.get_json() == {"authenticated": True, "admin": True}
         with client.session_transaction() as session:
             assert session["admin"] == auth.session_token
+
+    def test_user_password_establishes_a_non_admin_session(self, client, auth):
+        auth.set_user_password("sing")
+
+        response = client.post("/api/auth", json={"password": "sing"})
+
+        assert response.status_code == 200
+        assert response.get_json() == {"authenticated": True, "admin": False}
+        with client.session_transaction() as session:
+            assert session["user"] == auth.user_session_token
+            assert "admin" not in session
 
     def test_incorrect_password_is_a_401(self, client):
         response = client.post("/api/auth", json={"admin_password": "wrong"})
@@ -148,16 +222,20 @@ class TestApiLogin:
 
         assert client.get("/api/gated").status_code == 200
 
-    def test_status_tells_a_guest_a_password_is_wanted(self, client):
+    def test_status_reports_admin_requirement_separately(self, client):
         assert client.get("/api/auth").get_json() == {
-            "authenticated": False,
-            "password_required": True,
+            "authenticated": True,
+            "admin": False,
+            "password_required": False,
+            "admin_password_set": True,
         }
 
-    def test_an_open_box_accepts_anyone(self, client, auth):
+    def test_no_passwords_grants_general_access_but_not_admin(self, client, auth):
         auth.set_password(None)
 
-        assert client.post("/api/auth", json={"admin_password": ""}).status_code == 200
+        response = client.post("/api/auth", json={"admin_password": ""})
+        assert response.status_code == 200
+        assert response.get_json() == {"authenticated": True, "admin": False}
 
 
 POWEROFF = ["systemctl", "poweroff"]

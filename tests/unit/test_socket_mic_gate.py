@@ -11,7 +11,7 @@ failure -- it gets tested as whatever it was declared to be.
 from unittest.mock import MagicMock
 
 import pytest
-from flask import Flask
+from flask import Flask, session
 from flask_socketio import SocketIO
 
 from pikaraoke.routes import socket_events
@@ -47,11 +47,11 @@ def reset_splash_state():
     socket_events.master_splash_id = None
 
 
-def make_socket_app(admin: bool):
+def make_socket_app(admin: bool, user_password: bool = False):
     """A Flask app with the socket handlers registered and a stubbed karaoke."""
     app = Flask(__name__)
     app.config["SECRET_KEY"] = "test"
-    app.config["ADMIN_AUTH"] = StubAdminAuth(admin)
+    app.config["ADMIN_AUTH"] = StubAdminAuth(admin, user_password)
 
     # Real return values, not bare MagicMocks: the handlers emit what they get
     # back, and socketio serialises it to JSON.
@@ -98,9 +98,12 @@ def test_admin_handler_ignores_a_guest(event, args):
 
 @pytest.mark.parametrize("event,args", ADMIN_EVENTS)
 def test_admin_handler_serves_the_host(event, args):
-    """With no password set everyone is the host, so the controls still work."""
+    """An admin session can use the host-only controls."""
     app, socketio, karaoke = make_socket_app(admin=True)
-    client = socketio.test_client(app)
+    flask_client = app.test_client()
+    with flask_client.session_transaction() as session:
+        session["admin"] = app.config["ADMIN_AUTH"].session_token
+    client = socketio.test_client(app, flask_test_client=flask_client)
 
     client.emit(event, *args)
 
@@ -120,6 +123,27 @@ def test_public_handler_is_not_refused(event, args, caplog):
     client.emit(event, *args)
 
     assert "Refused" not in caplog.text, f"{event} is gated rather than open"
+
+
+def test_playback_event_requires_a_user_session_when_a_user_password_is_set():
+    app, socketio, karaoke = make_socket_app(admin=False, user_password=True)
+    client = socketio.test_client(app)
+
+    client.emit("start_song")
+
+    assert karaoke.playback_controller.start_song.call_count == 0
+
+
+def test_playback_event_accepts_a_user_session():
+    app, socketio, karaoke = make_socket_app(admin=False, user_password=True)
+    flask_client = app.test_client()
+    with flask_client.session_transaction() as session:
+        session["user"] = app.config["ADMIN_AUTH"].user_session_token
+    client = socketio.test_client(app, flask_test_client=flask_client)
+
+    client.emit("start_song")
+
+    karaoke.playback_controller.start_song.assert_called_once_with(None)
 
 
 def test_a_guest_splash_registers_and_reports_position():

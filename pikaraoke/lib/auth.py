@@ -11,7 +11,7 @@ from flask import Flask, flash, jsonify, redirect, request, session, url_for
 from flask.typing import ResponseReturnValue
 from flask_smorest import Api
 
-from pikaraoke.lib.current_app import get_admin_auth, is_admin
+from pikaraoke.lib.current_app import get_admin_auth, is_admin, is_user
 
 _ = flask_babel.gettext
 
@@ -19,7 +19,7 @@ _ = flask_babel.gettext
 # hatch for endpoints we own.
 _LIBRARY_ENDPOINTS = frozenset({"static", "api-docs.openapi_json", "api-docs.openapi_swagger_ui"})
 
-_SECURITY_SCHEME = "adminSession"
+_SECURITY_SCHEME = "pikaSession"
 
 
 def public(view: Callable) -> Callable:
@@ -33,26 +33,40 @@ def public(view: Callable) -> Callable:
     return view
 
 
+def user(view: Callable) -> Callable:
+    """Allow callers signed in with either the user or admin password."""
+    view.pika_user = True
+    return view
+
+
 def grant_admin_session() -> None:
     """Make this caller an admin until the password changes or the cookie expires."""
+    session.pop("user", None)
     session["admin"] = get_admin_auth().session_token
     session.permanent = True
 
 
-def log_in(password: str) -> bool:
-    """Establish an admin session if the password is right, and report whether it was.
+def grant_user_session() -> None:
+    """Make this caller an ordinary user until the user password changes."""
+    session.pop("admin", None)
+    session["user"] = get_admin_auth().user_session_token
+    session.permanent = True
 
-    Each caller says so in its own medium: the browser flashes, the API answers
-    in a status code.
-    """
-    if not get_admin_auth().verify(password):
-        return False
-    grant_admin_session()
-    return True
+
+def log_in(password: str) -> str | None:
+    """Authenticate with either password, preferring admin if they are identical."""
+    auth = get_admin_auth()
+    if auth.verify(password):
+        grant_admin_session()
+        return "admin"
+    if auth.verify_user(password):
+        grant_user_session()
+        return "user"
+    return None
 
 
 def document_auth(app: Flask, api: Api) -> None:
-    """Name the credential in the spec, and require it wherever `@public` did not.
+    """Name the session cookie in the spec and require it on protected operations.
 
     Without this, a client reading `/apidocs` sees the whole API and no way in.
     """
@@ -62,7 +76,10 @@ def document_auth(app: Flask, api: Api) -> None:
             "type": "apiKey",
             "in": "cookie",
             "name": app.config["SESSION_COOKIE_NAME"],
-            "description": "Session cookie issued by POST /api/auth.",
+            "description": (
+                "Session cookie issued by POST /api/auth. Its privileges depend on whether "
+                "the user or admin password was supplied."
+            ),
         },
     )
     # Read when the spec is serialised, so this need not run before the blueprints.
@@ -70,7 +87,7 @@ def document_auth(app: Flask, api: Api) -> None:
 
 
 def install_auth_gate(app: Flask) -> None:
-    """Refuse every request whose endpoint is not marked `@public`."""
+    """Require the role declared on each endpoint, defaulting to admin."""
 
     @app.before_request
     def require_admin() -> ResponseReturnValue | None:
@@ -82,6 +99,10 @@ def install_auth_gate(app: Flask) -> None:
         view = app.view_functions.get(request.endpoint)
         if getattr(view, "pika_public", False):
             return None
+        if getattr(view, "pika_user", False):
+            if is_user():
+                return None
+            return _refuse()
         # Last, because it re-reads config.ini: ~0.4ms on a desktop and several
         # times that on a Pi, which the public routes serving HLS segments skip.
         if is_admin():
@@ -98,6 +119,6 @@ def _refuse() -> ResponseReturnValue:
     """
     if request.path.startswith("/api/"):
         return jsonify({"error": "Unauthorized"}), 403
-    # MSG: Message shown when someone who is not the host tries a host-only action.
+    # MSG: Message shown when someone who is not logged in tries to load a page.
     flash(_("You don't have permission to do that"), "is-danger")
-    return redirect(url_for("home.home"))
+    return redirect(url_for("admin.login_page"))

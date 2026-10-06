@@ -6,7 +6,7 @@ import flask_babel
 from flask import render_template
 from flask_smorest import Blueprint
 
-from pikaraoke.lib.auth import public
+from pikaraoke.lib.auth import user
 from pikaraoke.lib.current_app import get_karaoke_instance, get_site_name, is_admin
 
 _ = flask_babel.gettext
@@ -15,7 +15,7 @@ queue_bp = Blueprint("queue", __name__)
 
 
 @queue_bp.route("/queue")
-@public
+@user
 def queue():
     """Queue management page."""
     k = get_karaoke_instance()

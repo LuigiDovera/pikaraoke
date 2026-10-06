@@ -4,7 +4,7 @@ from flask import jsonify
 from flask_smorest import Blueprint
 from marshmallow import Schema, fields
 
-from pikaraoke.lib.auth import public
+from pikaraoke.lib.auth import user
 from pikaraoke.lib.current_app import get_karaoke_instance
 from pikaraoke.lib.youtube_dl import get_stream_url
 
@@ -29,8 +29,8 @@ class DownloadBody(Schema):
 
 
 @search_api_bp.route("/api/preview")
-@public
 @search_api_bp.arguments(PreviewQuery, location="query")
+@user
 def preview(query):
     """Get a direct stream URL for previewing a YouTube video."""
     stream_url = get_stream_url(query["url"])
@@ -40,7 +40,7 @@ def preview(query):
 
 
 @search_api_bp.route("/api/download", methods=["POST"])
-@public
+@user
 @search_api_bp.arguments(DownloadBody, location="json")
 def download(form):
     """Download a video from YouTube."""

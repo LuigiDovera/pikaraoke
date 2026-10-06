@@ -5,7 +5,7 @@ from pathlib import Path, PurePath
 from urllib.parse import quote
 
 import pytest
-from flask import Flask
+from flask import Flask, session
 from flask_babel import Babel
 
 from pikaraoke.lib.auth import document_auth, install_auth_gate, public
@@ -22,6 +22,7 @@ PIKARAOKE_PACKAGE = Path(__file__).resolve().parent.parent / "pikaraoke"
 # test does not have to rediscover the layout's own dependencies.
 _BASE_TEMPLATE_ENDPOINTS = [
     ("/", "home.home"),
+    ("/login", "admin.login_page"),
     ("/queue", "queue.queue"),
     ("/browse", "files.browse"),
     ("/search", "search.search"),
@@ -35,21 +36,25 @@ _BASE_TEMPLATE_ENDPOINTS = [
 
 
 class StubAdminAuth:
-    """Just enough of AdminAuth for is_admin() to answer a fixed way.
+    """Stub passwords and a fixed admin session for route tests."""
 
-    No password set means everyone is an admin; a password set that no session
-    token matches means nobody is.
-    """
-
-    def __init__(self, admin: bool) -> None:
+    def __init__(self, admin: bool, user_password: bool = False) -> None:
         self._admin = admin
+        self._user_password = user_password
 
     def is_password_set(self) -> bool:
-        return not self._admin
+        return True
 
     @property
     def session_token(self) -> str:
-        return "not-the-session-cookie"
+        return "stub-admin-session" if self._admin else "not-the-session-cookie"
+
+    def is_user_password_set(self) -> bool:
+        return self._user_password
+
+    @property
+    def user_session_token(self) -> str:
+        return "stub-user-session"
 
 
 def make_route_app(blueprint, linked_endpoints, admin: bool = True):
@@ -85,6 +90,13 @@ def make_route_app(blueprint, linked_endpoints, admin: bool = True):
         has_active_session=lambda: False,
         active_session_name=lambda: "",
     )
+
+    @app.before_request
+    def establish_test_admin_session():
+        auth = app.config["ADMIN_AUTH"]
+        if getattr(auth, "_admin", False):
+            session["admin"] = app.config["ADMIN_AUTH"].session_token
+
     install_auth_gate(app)
     return app
 

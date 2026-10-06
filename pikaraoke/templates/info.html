@@ -356,33 +356,6 @@
 		</div>
 	</div>
 
-	{% if not admin and admin_password_set %}
-		{# MSG: Title of the admin section. #}
-		<h2>{% trans %}Admin{% endtrans %}</h2>
-
-		<div class="card">
-			<div class="card-content">
-				<div class="content">
-					{# MSG: Title fo the form to enter the administrator password. #}
-					<p>{% trans %}Enter the administrator password{% endtrans %}</p>
-					<form action="{{ url_for('admin.auth') }}" method="post">
-						<div class="field has-addons mb-2">
-							<div class="control" style="width: 100%; max-width: 350px">
-								<input type="password" name="admin_password" class="input" autocomplete="current-password" />
-							</div>
-							<div class="control">
-								{# MSG: Text on submit button for the admin login form. #}
-								<button class="button is-rounded is-primary">{% trans %}Login{% endtrans %}</button>
-							</div>
-						</div>
-					</form>
-					{# MSG: Tells a locked-out host how to reset a forgotten admin password. #}
-					<p class="is-size-7 has-text-grey">{% trans %}Forgotten it? Restart PiKaraoke with --admin-password to set a new one.{% endtrans %}</p>
-				</div>
-			</div>
-		</div>
-	{% endif %}
-
 	{% if admin %}
 
 		{# MSG: Title of the song library section. #}
@@ -898,46 +871,68 @@
 
 		{% endif %}
 
-		{# MSG: Title of the admin section. #}
-		<h2>{% trans %}Admin{% endtrans %}</h2>
+		{% if admin %}
+			{# MSG: Title of the admin section. #}
+			<h2>{% trans %}Admin{% endtrans %}</h2>
 
-		<div class="card">
-			<div class="card-content">
-				<div class="content">
-					{% if admin_password_set %}
-						{# MSG: Explains the admin password field when a password is already set. #}
-						<p>{% trans %}Change the administrator password. Every other device will need to log in again.{% endtrans %}</p>
-					{% else %}
-						{# MSG: Explains the admin password field when no password has been set. #}
-						<p>{% trans %}Everyone on the network is an admin. Set a password to keep the player controls, song editing and shutdown to yourself.{% endtrans %}</p>
-					{% endif %}
-					<form action="{{ url_for('admin.set_admin_password') }}" method="post">
-						<div class="field has-addons mb-2">
-							<div class="control" style="width: 100%; max-width: 350px">
-								<input type="password" name="admin_password" class="input" autocomplete="new-password" />
+			<div class="card">
+				<div class="card-content">
+					<div class="content">
+						{% if user_password_set %}
+							<p>{% trans %}Change the general user password. All signed-in users will need to log in again.{% endtrans %}</p>
+						{% else %}
+							<p>{% trans %}Ordinary player access is open to everyone. Set a general user password to require sign-in.{% endtrans %}</p>
+						{% endif %}
+						<form action="{{ url_for('admin.set_user_password') }}" method="post">
+							<div class="field has-addons mb-2">
+								<div class="control" style="width: 100%; max-width: 350px">
+									<input type="password" name="user_password" class="input" autocomplete="new-password" />
+								</div>
+								<div class="control">
+									<button class="button is-rounded is-primary">{% trans %}Save user password{% endtrans %}</button>
+								</div>
 							</div>
-							<div class="control">
-								{# MSG: Button which saves a new administrator password. #}
-								<button class="button is-rounded is-primary">{% trans %}Save password{% endtrans %}</button>
+						</form>
+						{% if user_password_set %}
+							<form action="{{ url_for('admin.set_user_password') }}" method="post">
+								<input type="hidden" name="user_password" value="" />
+								<button class="button is-danger is-outlined">{% trans %}Clear user password{% endtrans %}</button>
+							</form>
+						{% endif %}
+
+						<hr>
+						{% if admin_password_set %}
+							<p>{% trans %}Change the administrator password. Other admin devices will need to log in again.{% endtrans %}</p>
+						{% else %}
+							<p>{% trans %}Admin access is disabled until an administrator password is set from the command line.{% endtrans %}</p>
+						{% endif %}
+						<form action="{{ url_for('admin.set_admin_password') }}" method="post">
+							<div class="field has-addons mb-2">
+								<div class="control" style="width: 100%; max-width: 350px">
+									<input type="password" name="admin_password" class="input" autocomplete="new-password" />
+								</div>
+								<div class="control">
+									<button class="button is-rounded is-primary">{% trans %}Save admin password{% endtrans %}</button>
+								</div>
 							</div>
-						</div>
-					</form>
-					{% if admin_password_set %}
+						</form>
 						<div class="buttons">
-							<form action="{{ url_for('admin.set_admin_password') }}" method="post">
-								<input type="hidden" name="admin_password" value="" />
-								{# MSG: Button which removes the administrator password, making everyone an admin. #}
-								<button class="button is-danger is-outlined">{% trans %}Clear password{% endtrans %}</button>
-							</form>
-							<form action="{{ url_for('admin.logout') }}" method="post">
-								{# MSG: Button which logs the user out of admin mode. #}
-								<button class="button is-primary">{% trans %}Log out{% endtrans %}</button>
-							</form>
+							{% if admin_password_set %}
+								<form action="{{ url_for('admin.set_admin_password') }}" method="post">
+									<input type="hidden" name="admin_password" value="" />
+									<button class="button is-danger is-outlined">{% trans %}Clear admin password{% endtrans %}</button>
+								</form>
+							{% endif %}
+							{% if admin_password_set or user_password_set %}
+								<form action="{{ url_for('admin.logout') }}" method="post">
+									<button class="button is-primary">{% trans %}Log out{% endtrans %}</button>
+								</form>
+							{% endif %}
 						</div>
-					{% endif %}
+					</div>
 				</div>
 			</div>
-		</div>
+		{% endif %}
 
 		{# MSG: Title of the section on shutting down / turning off the machine running Pikaraoke. #}
 		<h2>{% trans %}Shutdown{% endtrans %}</h2>
@@ -969,6 +964,12 @@
 			</div>
 		</div>
 
+	{% endif %}
+
+	{% if user_password_set and user_access and not admin %}
+		<form action="{{ url_for('admin.logout') }}" method="post">
+			<button class="button is-primary">{% trans %}Log out{% endtrans %}</button>
+		</form>
 	{% endif %}
 
 	<style>

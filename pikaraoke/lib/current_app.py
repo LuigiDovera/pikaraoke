@@ -13,11 +13,21 @@ from pikaraoke.lib.admin_auth import AdminAuth
 def is_admin() -> bool:
     """Whether this request is authenticated as the admin.
 
-    With no admin password set everyone is an admin -- the right default for a box
-    on a home TV. Otherwise it takes a signed session established by /auth.
+    Admin access always requires the admin password, even when no password has
+    been configured; an unset admin password never elevates ordinary users.
     """
     auth = get_admin_auth()
-    return not auth.is_password_set() or session.get("admin") == auth.session_token
+    return auth.is_password_set() and session.get("admin") == auth.session_token
+
+
+def is_user() -> bool:
+    """Whether this request may use ordinary karaoke features."""
+    auth = get_admin_auth()
+    return (
+        not auth.is_user_password_set()
+        or is_admin()
+        or session.get("user") == auth.user_session_token
+    )
 
 
 def get_karaoke_instance() -> Karaoke:

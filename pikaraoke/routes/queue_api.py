@@ -7,7 +7,7 @@ from flask import Response, jsonify
 from flask_smorest import Blueprint
 from marshmallow import Schema, fields
 
-from pikaraoke.lib.auth import public
+from pikaraoke.lib.auth import user
 from pikaraoke.lib.current_app import broadcast_event, get_karaoke_instance
 
 _ = flask_babel.gettext
@@ -39,7 +39,7 @@ class QueueEditQuery(Schema):
 
 
 @queue_api_bp.route("/api/get_queue")
-@public
+@user
 def get_queue():
     """Get the current song queue."""
     k = get_karaoke_instance()
@@ -109,7 +109,7 @@ def _do_enqueue(song: str, user: str) -> Response:
 
 
 @queue_api_bp.route("/api/enqueue", methods=["POST"])
-@public
+@user
 @queue_api_bp.arguments(EnqueueForm, location="form")
 def enqueue_form(form):
     """Add a song to the queue."""
@@ -117,7 +117,7 @@ def enqueue_form(form):
 
 
 @queue_api_bp.route("/api/queue/downloads")
-@public
+@user
 def get_current_downloads():
     """Get the status of current and pending downloads."""
     k = get_karaoke_instance()
@@ -125,7 +125,7 @@ def get_current_downloads():
 
 
 @queue_api_bp.route("/api/queue/downloads/errors/<error_id>", methods=["DELETE"])
-@public
+@user
 def delete_download_error(error_id):
     """Remove a download error from the list."""
     k = get_karaoke_instance()
@@ -135,7 +135,7 @@ def delete_download_error(error_id):
 
 
 @queue_api_bp.route("/api/queue/downloads/errors/<error_id>/retry", methods=["POST"])
-@public
+@user
 def retry_download_error(error_id):
     """Re-queue a failed download."""
     k = get_karaoke_instance()

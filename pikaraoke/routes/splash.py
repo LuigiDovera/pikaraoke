@@ -8,7 +8,7 @@ from flask import jsonify, render_template, url_for
 from flask_smorest import Blueprint
 
 from pikaraoke.karaoke import Karaoke
-from pikaraoke.lib.auth import public
+from pikaraoke.lib.auth import user
 from pikaraoke.lib.background_video import video_choices
 from pikaraoke.lib.current_app import get_karaoke_instance, get_site_name
 from pikaraoke.lib.raspi_wifi_config import get_raspi_wifi_text
@@ -63,14 +63,14 @@ def _get_active_score_phrases(k: Karaoke) -> dict[str, list[str]]:
 
 
 @splash_bp.route("/api/splash/score_phrases")
-@public
+@user
 def get_score_phrases():
     """Active score phrases as JSON — translated defaults or user-defined custom phrases."""
     return jsonify(_get_active_score_phrases(get_karaoke_instance()))
 
 
 @splash_bp.route("/splash")
-@public
+@user
 def splash():
     """Splash screen / player display for TV output."""
     k = get_karaoke_instance()

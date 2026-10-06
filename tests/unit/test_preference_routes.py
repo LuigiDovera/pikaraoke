@@ -3,7 +3,7 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-from flask import Flask
+from flask import Flask, session
 
 from pikaraoke.lib.auth import install_auth_gate
 from pikaraoke.lib.preference_manager import PreferenceManager
@@ -19,6 +19,11 @@ def app():
     test_app.secret_key = "test"
     test_app.config["ADMIN_AUTH"] = StubAdminAuth(admin=True)
     test_app.register_blueprint(preferences_bp)
+
+    @test_app.before_request
+    def establish_test_admin_session():
+        session["admin"] = test_app.config["ADMIN_AUTH"].session_token
+
     install_auth_gate(test_app)
     return test_app
 

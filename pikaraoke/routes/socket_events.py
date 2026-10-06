@@ -6,7 +6,7 @@ from functools import wraps
 
 from flask import request
 
-from pikaraoke.lib.current_app import get_karaoke_instance, is_admin
+from pikaraoke.lib.current_app import get_karaoke_instance, is_admin, is_user
 
 # Track connected splash screen clients and the elected master
 splash_connections = set()
@@ -24,6 +24,19 @@ def _guard(handler: Callable) -> Callable:
     def guarded(*args, **kwargs):
         if not is_admin():
             logging.warning(f"Refused {handler.__name__}: no admin session")
+            return None
+        return handler(*args, **kwargs)
+
+    return guarded
+
+
+def _user_guard(handler: Callable) -> Callable:
+    """Drop a playback event from a client without ordinary-user access."""
+
+    @wraps(handler)
+    def guarded(*args, **kwargs):
+        if not is_user():
+            logging.warning(f"Refused {handler.__name__}: no user session")
             return None
         return handler(*args, **kwargs)
 
@@ -52,7 +65,16 @@ def setup_socket_events(socketio):
 
         return register
 
-    @open_to_room("end_song")
+    def user_access(event: str) -> Callable:
+        """Register an event available to signed-in users and admins."""
+
+        def register(handler: Callable) -> Callable:
+            socketio.on(event)(_user_guard(handler))
+            return handler
+
+        return register
+
+    @user_access("end_song")
     def end_song(reason: str, playback_id: str | None = None) -> None:
         """Handle end_song WebSocket event from client.
 
@@ -63,7 +85,7 @@ def setup_socket_events(socketio):
         k = get_karaoke_instance()
         k.playback_controller.end_song(reason, playback_id)
 
-    @open_to_room("start_song")
+    @user_access("start_song")
     def start_song(playback_id: str | None = None) -> None:
         """Handle start_song WebSocket event when playback begins.
 
@@ -73,13 +95,13 @@ def setup_socket_events(socketio):
         k = get_karaoke_instance()
         k.playback_controller.start_song(playback_id)
 
-    @open_to_room("clear_notification")
+    @user_access("clear_notification")
     def clear_notification() -> None:
         """Handle clear_notification WebSocket event to dismiss notifications."""
         k = get_karaoke_instance()
         k.reset_now_playing_notification()
 
-    @open_to_room("register_splash")
+    @user_access("register_splash")
     def register_splash() -> None:
         """Handle splash screen registration and assign master/slave roles."""
         global master_splash_id
@@ -95,7 +117,7 @@ def setup_socket_events(socketio):
             socketio.emit("splash_role", "slave", room=sid)
             logging.info(f"Slave splash screens assigned: {sid}")
 
-    @open_to_room("playback_position")
+    @user_access("playback_position")
     def handle_playback_position(position: float) -> None:
         """Handle playback_position WebSocket event from the master splash screen.
 

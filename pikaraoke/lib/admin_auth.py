@@ -15,7 +15,7 @@ _SECTION = "SECRETS"
 
 
 class AdminAuth:
-    """Owns whether an admin password is set, and verifies attempts against it."""
+    """Owns user and admin passwords and the keys that invalidate their sessions."""
 
     def __init__(self, preferences: PreferenceManager) -> None:
         self._preferences = preferences
@@ -32,22 +32,46 @@ class AdminAuth:
         """Identifies the current password, so changing it logs every device out."""
         return self._get("session_token")
 
+    @property
+    def user_session_token(self) -> str:
+        """Identifies the user password, so changing it logs user devices out."""
+        return self._get("user_session_token")
+
     def is_password_set(self) -> bool:
-        """True when admin mode is locked down. False means everyone is an admin."""
+        """True when an admin password has been configured."""
         return bool(self._get("password_hash"))
+
+    def is_user_password_set(self) -> bool:
+        """True when ordinary users must sign in before using the player."""
+        return bool(self._get("user_password_hash"))
 
     def set_password(self, password: str | None) -> None:
         """Set the admin password, or clear it with None or an empty string."""
-        if password:
-            salt = secrets.token_bytes(16)
-            self._set("password_hash", f"{salt.hex()}:{self._derive(password, salt).hex()}")
-        else:
-            self._set("password_hash", "")
+        self._set_password("password_hash", password)
         self._set("session_token", secrets.token_hex(16))
 
+    def set_user_password(self, password: str | None) -> None:
+        """Set the ordinary-user password, or clear it with None or an empty string."""
+        self._set_password("user_password_hash", password)
+        self._set("user_session_token", secrets.token_hex(16))
+
     def verify(self, password: str) -> bool:
-        """True if the password matches the stored hash."""
-        stored = self._get("password_hash")
+        """True if the password matches the stored admin password hash."""
+        return self._verify("password_hash", password)
+
+    def verify_user(self, password: str) -> bool:
+        """True if the password matches the stored ordinary-user password hash."""
+        return self._verify("user_password_hash", password)
+
+    def _set_password(self, key: str, password: str | None) -> None:
+        if password:
+            salt = secrets.token_bytes(16)
+            self._set(key, f"{salt.hex()}:{self._derive(password, salt).hex()}")
+        else:
+            self._set(key, "")
+
+    def _verify(self, key: str, password: str) -> bool:
+        stored = self._get(key)
         if not stored:
             return False
         salt, _, expected = stored.partition(":")

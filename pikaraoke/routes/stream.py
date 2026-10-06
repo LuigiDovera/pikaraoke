@@ -15,9 +15,10 @@ from flask import (
 )
 from flask_smorest import Blueprint
 
+from pikaraoke.lib.auth import user
+
 _ = flask_babel.gettext
 
-from pikaraoke.lib.auth import public
 from pikaraoke.lib.current_app import get_karaoke_instance
 from pikaraoke.lib.file_resolver import FileResolver, get_tmp_dir
 
@@ -26,7 +27,7 @@ stream_bp = Blueprint("stream", __name__)
 
 # Serves HLS playlist file - explicit .m3u8 extension
 @stream_bp.route("/stream/<id>.m3u8")
-@public
+@user
 def stream_playlist(id):
     """Serve HLS playlist file."""
     file_path = os.path.join(get_tmp_dir(), f"{id}.m3u8")
@@ -58,7 +59,7 @@ def stream_playlist(id):
 
 # Serves HLS segment files - .m4s (fragmented MP4) extension
 @stream_bp.route("/stream/<filename>.m4s")
-@public
+@user
 def stream_segment_m4s(filename):
     """Serve HLS segment file (fragmented MP4)."""
     # Security: prevent directory traversal
@@ -75,7 +76,7 @@ def stream_segment_m4s(filename):
 
 # Serves init.mp4 header file for fMP4 (with unique filenames per stream)
 @stream_bp.route("/stream/<filename>_init.mp4")
-@public
+@user
 def stream_init(filename):
     """Serve init.mp4 header file for fragmented MP4 streams."""
     # Security: prevent directory traversal
@@ -91,7 +92,7 @@ def stream_init(filename):
 
 # Legacy .ts support for backward compatibility
 @stream_bp.route("/stream/<filename>.ts")
-@public
+@user
 def stream_segment(filename):
     """Serve HLS segment file (MPEG-TS)."""
     # Security: prevent directory traversal
@@ -108,7 +109,7 @@ def stream_segment(filename):
 
 # Main streaming route - serves HLS or progressive MP4 based on file extension
 @stream_bp.route("/stream/<id>")
-@public
+@user
 def stream_main(id):
     """Route streaming request to HLS or progressive MP4."""
     # Check if it's an HLS request (.m3u8) or MP4 request (.mp4)
@@ -125,7 +126,6 @@ def stream_main(id):
 # This method works with HLS-generated fMP4 segments but serves them as continuous MP4
 # Compatible with Chrome, Firefox and RPi with hardware acceleration
 @stream_bp.route("/stream/<id>.mp4")
-@public
 def stream_progressive_mp4(id):
     """Stream progressive MP4 from HLS-generated segments."""
     file_path = os.path.join(get_tmp_dir(), f"{id}.mp4")
@@ -194,7 +194,7 @@ def stream_file_path_full(file_path):
 # Streams the file in full with proper range headers
 # (Safari compatible, but requires the ffmpeg transcoding to be complete to know file size)
 @stream_bp.route("/stream/full/<id>")
-@public
+@user
 def stream_full(id):
     """Stream video with range headers (Safari compatible)."""
     k = get_karaoke_instance()
@@ -206,7 +206,7 @@ def stream_full(id):
 
 
 @stream_bp.route("/stream/bg_video/<file>")
-@public
+@user
 def stream_bg_video(file):
     """Serve one background video by name.
 
@@ -229,7 +229,6 @@ def stream_bg_video(file):
 
 # subtitle .ass
 @stream_bp.route("/subtitle/<id>")
-@public
 def stream_subtitle(id):
     """Serve subtitle file for the current song."""
     k = get_karaoke_instance()

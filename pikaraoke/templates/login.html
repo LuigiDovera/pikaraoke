@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html data-theme="dark">
+
+<head>
+  <title>{{site_title}} - {{ title }}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="{{ url_for('static', filename='bulma.min.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='bulma-dark.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='custom.css') }}">
+</head>
+
+<body>
+  <main class="container is-max-desktop p-4">
+    <section class="section">
+      <h1 class="title has-text-centered">{{site_title}}</h1>
+      <div class="card">
+        <div class="card-content">
+          <div class="content">
+            <p>{% trans %}Enter the user or administrator password{% endtrans %}</p>
+            <form action="{{ url_for('admin.auth') }}" method="post">
+              <div class="field">
+                <div class="control">
+                  <input type="password" name="password" class="input"
+                    autocomplete="current-password" autofocus required>
+                </div>
+              </div>
+              <button class="button is-rounded is-primary">{% trans %}Login{% endtrans %}</button>
+            </form>
+            {% for category, message in get_flashed_messages(with_categories=true) %}
+            <div class="notification {{ category }} mt-4">{{ message }}</div>
+            {% endfor %}
+            <p class="is-size-7 has-text-grey mt-4">
+              {% trans %}Forgotten the user password? An administrator can reset it in Settings. Reset a forgotten admin password by restarting PiKaraoke with --admin-password.{% endtrans %}
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+
+</html>
