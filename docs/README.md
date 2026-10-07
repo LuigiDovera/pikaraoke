@@ -105,6 +105,23 @@ uv tool upgrade pikaraoke
 
 ## Docker instructions
 
+To run PiKaraoke with Docker Compose, start the service. The displayed URL is configured in
+`compose.yaml` as `http://10.0.2.15:5555`.
+
+```sh
+./compose-up.sh -d
+```
+
+The script prompts for the admin password and the general user password without echoing either, then
+builds and starts the Compose services. The user password is required to access the player; the
+admin password grants access to settings and host controls. Pass any additional `docker compose up`
+options to the script, such as `--detach`.
+
+Songs are stored in `./songs` and settings in `./data`. Compose creates these
+folders and assigns their contents to UID/GID 1000 before starting PiKaraoke. Set `TZ` in `.env` to
+your own timezone if needed; it defaults to UTC.
+The `cookies.txt` file is mounted writable because yt-dlp saves cookie updates to it.
+
 Run PiKaraoke in Docker using the command below. Note the requirements for port mapping, LAN IP specification, and persistent volume mounts (set to ~/.pikaraoke in the example for simplicity):
 
 ```sh

@@ -1,0 +1,50 @@
+services:
+  setup:
+    image: pikaraoke:local
+    pull_policy: build
+    build:
+      context: .
+      dockerfile: build_scripts/docker/Dockerfile
+    user: "0:0"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        mkdir -p /app/pikaraoke-songs /home/pikaraoke/.pikaraoke &&
+        chown -R 1000:1000 /app/pikaraoke-songs /home/pikaraoke/.pikaraoke &&
+        if [ -f /app/cookies.txt ]; then chown 1000:1000 /app/cookies.txt; fi
+    volumes:
+      - ./songs:/app/pikaraoke-songs
+      - ./data:/home/pikaraoke/.pikaraoke
+      - ./cookies.txt:/app/cookies.txt
+    restart: "no"
+
+  pikaraoke:
+    image: pikaraoke:local
+    pull_policy: build
+    build:
+      context: .
+      dockerfile: build_scripts/docker/Dockerfile
+    container_name: pikaraoke
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+    command:
+      - --url
+      - http://10.0.2.15:5555
+      - --admin-password=${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}
+      - --user-password=${USER_PASSWORD:?Set USER_PASSWORD via compose-up.sh}
+      - --ytdl-args=--cookies cookies.txt
+    environment:
+      TZ: ${TZ:-UTC}
+    ports:
+      - "5555:5555"
+    volumes:
+      - ./songs:/app/pikaraoke-songs
+      - ./data:/home/pikaraoke/.pikaraoke
+      - ./cookies.txt:/app/cookies.txt
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"

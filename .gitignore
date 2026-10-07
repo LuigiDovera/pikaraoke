@@ -15,6 +15,9 @@ docker-compose.yml
 .coverage
 .claude/
 /logs
+cookies.txt
+/data
+/songs
 
 # Compiled translation files (generated from .po files at startup)
 *.mo
