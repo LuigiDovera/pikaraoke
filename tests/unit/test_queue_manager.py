@@ -215,6 +215,73 @@ class TestQueueManagerEdit:
         assert result is False
         assert len(queue_manager.queue) == 1
 
+
+class TestUserQueueActions:
+    def test_user_can_skip_own_song_case_insensitively(self, queue_manager, events):
+        queue_manager.enqueue("/songs/song1---abc.mp4", "Singer")
+        updates = []
+        events.on("queue_update", lambda: updates.append(True))
+
+        assert queue_manager.skip_user_song("/songs/song1---abc.mp4", "singer")
+        assert queue_manager.queue == []
+        assert len(updates) == 1
+
+    def test_user_cannot_skip_another_users_song(self, queue_manager):
+        queue_manager.enqueue("/songs/song1---abc.mp4", "Singer")
+
+        assert not queue_manager.skip_user_song("/songs/song1---abc.mp4", "Other")
+        assert len(queue_manager.queue) == 1
+
+    def test_user_can_swap_own_song_without_changing_queue_position(self, queue_manager, events):
+        queue_manager.enqueue("/songs/song1---abc.mp4", "Singer", semitones=3)
+        queue_manager.enqueue("/songs/other---def.mp4", "Other")
+        updates = []
+        events.on("queue_update", lambda: updates.append(True))
+
+        replacement = "/songs/song2---def.mp4"
+        assert replacement in queue_manager.get_user_song_replacements(
+            "/songs/song1---abc.mp4", "singer"
+        )
+        assert queue_manager.swap_user_song("/songs/song1---abc.mp4", "singer", replacement)
+
+        assert queue_manager.queue[0]["file"] == replacement
+        assert queue_manager.queue[0]["user"] == "Singer"
+        assert queue_manager.queue[0]["semitones"] == 0
+        assert queue_manager.queue[1]["file"] == "/songs/other---def.mp4"
+        assert len(updates) == 1
+
+    def test_user_cannot_swap_another_users_song(self, queue_manager):
+        queue_manager.enqueue("/songs/song1---abc.mp4", "Singer")
+
+        assert not queue_manager.swap_user_song(
+            "/songs/song1---abc.mp4", "Other", "/songs/song2---def.mp4"
+        )
+        assert queue_manager.queue[0]["file"] == "/songs/song1---abc.mp4"
+
+    def test_swap_rejects_unavailable_or_already_queued_song(self, queue_manager):
+        queue_manager.enqueue("/songs/song1---abc.mp4", "Singer")
+        queue_manager.enqueue("/songs/song2---def.mp4", "Other")
+
+        assert not queue_manager.swap_user_song(
+            "/songs/song1---abc.mp4", "Singer", "/songs/song2---def.mp4"
+        )
+        assert not queue_manager.swap_user_song(
+            "/songs/song1---abc.mp4", "Singer", "/songs/not-downloaded.mp4"
+        )
+
+    def test_swap_fails_when_no_alternative_song_is_available(self, preferences, events):
+        qm = QueueManager(
+            preferences=preferences,
+            events=events,
+            filename_from_path=extract_title,
+            get_available_songs=lambda: ["/songs/song1---abc.mp4"],
+        )
+        qm.enqueue("/songs/song1---abc.mp4", "Singer")
+
+        assert qm.get_user_song_replacements("/songs/song1---abc.mp4", "Singer") == []
+        assert not qm.swap_user_song("/songs/song1---abc.mp4", "Singer", "/songs/not-available.mp4")
+        assert qm.queue[0]["file"] == "/songs/song1---abc.mp4"
+
     def test_queue_edit_requires_exact_match(self, queue_manager):
         """Queue edit should require exact path match, not partial match."""
         queue_manager.enqueue("/songs/love---abc.mp4", "User1")

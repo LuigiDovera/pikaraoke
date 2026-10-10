@@ -313,3 +313,57 @@ class QueueManager:
 
         logging.error("Unrecognized action: " + action)
         return False
+
+    def user_owns_song(self, song_path: str, user: str) -> bool:
+        """Check whether a queued song belongs to the named user."""
+        index = self._find_song_index(song_path)
+        return index != -1 and self.queue[index]["user"].casefold() == user.casefold()
+
+    def skip_user_song(self, song_path: str, user: str) -> bool:
+        """Remove a queued song when it belongs to the requesting user."""
+        index = self._find_song_index(song_path)
+        if not self.user_owns_song(song_path, user):
+            return False
+
+        logging.info("User %s skipped queued song: %s", user, song_path)
+        del self.queue[index]
+        self._events.emit("queue_update")
+        self._events.emit("now_playing_update")
+        return True
+
+    def get_user_song_replacements(self, song_path: str, user: str) -> list[str]:
+        """Get available, unqueued replacements for a song owned by the user."""
+        index = self._find_song_index(song_path)
+        if not self.user_owns_song(song_path, user):
+            return []
+        if not self._get_available_songs:
+            logging.error("No available songs callback provided!")
+            return []
+
+        queued_paths = {
+            item["file"] for queue_index, item in enumerate(self.queue) if queue_index != index
+        }
+        return [
+            song
+            for song in self._get_available_songs()
+            if song != song_path and song not in queued_paths
+        ]
+
+    def swap_user_song(self, song_path: str, user: str, replacement_path: str) -> bool:
+        """Replace a user's queued song with a selected available song."""
+        if replacement_path not in self.get_user_song_replacements(song_path, user):
+            logging.warning("Invalid replacement requested by user %s: %s", user, replacement_path)
+            return False
+
+        index = self._find_song_index(song_path)
+        if index == -1:
+            return False
+
+        queue_item = self.queue[index]
+        queue_item["file"] = replacement_path
+        queue_item["title"] = self._resolve_title(replacement_path)
+        queue_item["semitones"] = 0
+        logging.info("User %s swapped queued song for: %s", user, replacement_path)
+        self._events.emit("queue_update")
+        self._events.emit("now_playing_update")
+        return True

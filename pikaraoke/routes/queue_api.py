@@ -3,9 +3,9 @@
 from urllib.parse import unquote
 
 import flask_babel
-from flask import Response, jsonify
+from flask import Response, jsonify, request
 from flask_smorest import Blueprint
-from marshmallow import Schema, fields
+from marshmallow import Schema, fields, validate
 
 from pikaraoke.lib.auth import user
 from pikaraoke.lib.current_app import broadcast_event, get_karaoke_instance
@@ -36,6 +36,20 @@ class QueueEditQuery(Schema):
     song = fields.String(
         metadata={"description": "Path to the song file (required unless action is 'clear')"}
     )
+
+
+class OwnQueueEditForm(Schema):
+    action = fields.String(
+        required=True,
+        validate=validate.OneOf(["skip", "swap"]),
+        metadata={"description": "Whether to skip or swap the user's queued song"},
+    )
+    song = fields.String(required=True, metadata={"description": "Path to the queued song"})
+    replacement = fields.String(metadata={"description": "Available song to swap into the queue"})
+
+
+class OwnQueueReplacementsQuery(Schema):
+    song = fields.String(required=True, metadata={"description": "Path to the user's queued song"})
 
 
 @queue_api_bp.route("/api/get_queue")
@@ -98,6 +112,61 @@ def queue_edit(query):
     # QueueManager emits queue_update and now_playing_update itself, and Karaoke
     # bridges those to the socket -- so this path adds no broadcast_event.
     return jsonify({"success": success})
+
+
+@queue_api_bp.route("/api/queue/own", methods=["POST"])
+@user
+@queue_api_bp.arguments(OwnQueueEditForm, location="form")
+def edit_own_queue(form):
+    """Skip or swap a queued song belonging to the caller's device identity."""
+    owner = unquote(request.cookies.get("user", "")).strip()
+    if not owner:
+        return (
+            jsonify({"success": False, "message": _("Could not identify your queued songs.")}),
+            403,
+        )
+
+    karaoke = get_karaoke_instance()
+    queue_manager = karaoke.queue_manager
+    if not queue_manager.user_owns_song(form["song"], owner):
+        return jsonify({"success": False, "message": _("That song is not yours to change.")}), 403
+
+    if form["action"] == "skip":
+        success = queue_manager.skip_user_song(form["song"], owner)
+        message = _("Song removed from your queue.") if success else _("Could not skip your song.")
+    else:
+        replacement = form.get("replacement", "")
+        success = queue_manager.swap_user_song(form["song"], owner, replacement)
+        if success:
+            title = karaoke.song_manager.display_name_from_path(replacement)
+            message = _("Song swapped for: %s") % title
+        else:
+            message = _("That replacement is no longer available.")
+
+    return jsonify({"success": success, "message": message})
+
+
+@queue_api_bp.route("/api/queue/own/replacements")
+@user
+@queue_api_bp.arguments(OwnQueueReplacementsQuery, location="query")
+def get_own_queue_replacements(query):
+    """List downloaded songs the caller can swap into their own queue."""
+    owner = unquote(request.cookies.get("user", "")).strip()
+    if not owner:
+        return jsonify({"error": _("Could not identify your queued songs.")}), 403
+
+    karaoke = get_karaoke_instance()
+    queue_manager = karaoke.queue_manager
+    if not queue_manager.user_owns_song(query["song"], owner):
+        return jsonify({"error": _("That song is not yours to change.")}), 403
+
+    songs = queue_manager.get_user_song_replacements(query["song"], owner)
+    return jsonify(
+        [
+            {"file": song, "title": karaoke.song_manager.display_name_from_path(song)}
+            for song in songs
+        ]
+    )
 
 
 def _do_enqueue(song: str, user: str) -> Response:

@@ -33,6 +33,8 @@ EXPECTED_USER_ENDPOINTS = {
     "queue_api.get_current_downloads",
     "queue_api.get_queue",
     "queue_api.retry_download_error",
+    "queue_api.edit_own_queue",
+    "queue_api.get_own_queue_replacements",
     "search.search",
     "search_api.download",
     "search_api.preview",

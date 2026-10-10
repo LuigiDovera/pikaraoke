@@ -2292,3 +2292,65 @@ msgstr ""
 #: templates/splash.html:150
 msgid "Confirm"
 msgstr "确认"
+
+#: routes/queue_api.py:119
+msgid "Could not identify your queued songs."
+msgstr ""
+
+#: routes/queue_api.py:124
+msgid "That song is not yours to change."
+msgstr ""
+
+#: routes/queue_api.py:128
+msgid "Song removed from your queue."
+msgstr ""
+
+#: routes/queue_api.py:128
+msgid "Could not skip your song."
+msgstr ""
+
+#: routes/queue_api.py:134
+#, python-format
+msgid "Song swapped for: %s"
+msgstr ""
+
+#: routes/queue_api.py:136
+msgid "No other available songs to swap with."
+msgstr ""
+
+#: templates/queue.html:513
+msgid "Could not update your song."
+msgstr ""
+
+#: templates/queue.html:682
+#, python-format
+msgid "Skip my song"
+msgstr ""
+
+#: templates/queue.html:686
+msgid "Swap for another available song"
+msgstr ""
+
+#: pikaraoke/routes/queue_api.py:144
+msgid "That replacement is no longer available."
+msgstr ""
+
+#: pikaraoke/templates/queue.html:531
+msgid "No available songs to swap with."
+msgstr ""
+
+#: pikaraoke/templates/queue.html:534
+msgid "Choose a song"
+msgstr ""
+
+#: pikaraoke/templates/queue.html:541
+msgid "Could not load available songs."
+msgstr ""
+
+#: pikaraoke/templates/queue.html:747
+msgid "Choose a replacement song"
+msgstr ""
+
+#: pikaraoke/templates/queue.html:757
+msgid "Swap song"
+msgstr ""

@@ -138,6 +138,82 @@ class TestQueueApiContract:
         assert data == []
 
 
+class TestOwnQueueEdit:
+    @patch("pikaraoke.routes.queue_api.get_karaoke_instance")
+    def test_user_can_skip_song_matching_their_cookie(self, mock_get_instance, client):
+        mock_queue_manager = MagicMock()
+        mock_queue_manager.skip_user_song.return_value = True
+        mock_karaoke = MagicMock(queue_manager=mock_queue_manager)
+        mock_get_instance.return_value = mock_karaoke
+        client.set_cookie("user", "Singer%20Name")
+
+        response = client.post("/api/queue/own", data={"song": "/songs/song.mp4", "action": "skip"})
+
+        assert response.status_code == 200
+        assert response.get_json()["success"] is True
+        mock_queue_manager.skip_user_song.assert_called_once_with("/songs/song.mp4", "Singer Name")
+
+    @patch("pikaraoke.routes.queue_api.get_karaoke_instance")
+    def test_user_cannot_edit_without_cookie_identity(self, mock_get_instance, client):
+        response = client.post("/api/queue/own", data={"song": "/songs/song.mp4", "action": "skip"})
+
+        assert response.status_code == 403
+        mock_get_instance.assert_not_called()
+
+    @patch("pikaraoke.routes.queue_api.get_karaoke_instance")
+    def test_user_cannot_edit_another_users_song(self, mock_get_instance, client):
+        mock_queue_manager = MagicMock()
+        mock_queue_manager.user_owns_song.return_value = False
+        mock_get_instance.return_value = MagicMock(queue_manager=mock_queue_manager)
+        client.set_cookie("user", "Singer")
+
+        response = client.post("/api/queue/own", data={"song": "/songs/song.mp4", "action": "swap"})
+
+        assert response.status_code == 403
+        mock_queue_manager.swap_user_song.assert_not_called()
+
+    @patch("pikaraoke.routes.queue_api.get_karaoke_instance")
+    def test_user_can_swap_own_song(self, mock_get_instance, client):
+        mock_queue_manager = MagicMock()
+        mock_queue_manager.swap_user_song.return_value = True
+        mock_karaoke = MagicMock(queue_manager=mock_queue_manager)
+        mock_karaoke.song_manager.display_name_from_path.return_value = "New song"
+        mock_get_instance.return_value = mock_karaoke
+        client.set_cookie("user", "Singer%20Name")
+
+        response = client.post(
+            "/api/queue/own",
+            data={
+                "song": "/songs/old.mp4",
+                "action": "swap",
+                "replacement": "/songs/new.mp4",
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.get_json() == {"success": True, "message": "Song swapped for: New song"}
+        mock_queue_manager.swap_user_song.assert_called_once_with(
+            "/songs/old.mp4", "Singer Name", "/songs/new.mp4"
+        )
+
+    @patch("pikaraoke.routes.queue_api.get_karaoke_instance")
+    def test_replacements_endpoint_returns_downloaded_choices(self, mock_get_instance, client):
+        mock_queue_manager = MagicMock()
+        mock_queue_manager.get_user_song_replacements.return_value = ["/songs/new.mp4"]
+        mock_karaoke = MagicMock(queue_manager=mock_queue_manager)
+        mock_karaoke.song_manager.display_name_from_path.return_value = "New song"
+        mock_get_instance.return_value = mock_karaoke
+        client.set_cookie("user", "Singer%20Name")
+
+        response = client.get("/api/queue/own/replacements?song=/songs/old.mp4")
+
+        assert response.status_code == 200
+        assert response.get_json() == [{"file": "/songs/new.mp4", "title": "New song"}]
+        mock_queue_manager.get_user_song_replacements.assert_called_once_with(
+            "/songs/old.mp4", "Singer Name"
+        )
+
+
 def _make_queue_item(n: int) -> dict:
     """Create a queue item dict for testing."""
     return {"file": f"/songs/song{n}.mp4", "title": f"Song {n}", "user": f"User{n}", "semitones": 0}
